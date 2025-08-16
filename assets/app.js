@@ -1,4 +1,4 @@
-// v6.6: Initials-based access key; facilities limited to Santiago de Chile
+// v6.7.2: Santiago facilities, access via initials, history isolated per center
 const EXCLUSIVE_SETS = [
   new Set(["1a","1b","1c"]),
   new Set(["4a","4b","4c"]),
@@ -17,6 +17,26 @@ function computeInitials(name){
   const letters = tokens.filter(t => !stop.has(t.toLowerCase())).map(t => t[0].toUpperCase());
   return letters.join("");
 }
+function slugify(name){
+  return normalizeStr(name).toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'');
+}
+function getHistoryKey(facility){
+  const slug = slugify(facility||"default");
+  return `nas_history__${slug}`;
+}
+
+// Migrate old shared 'nas_history' to namespaced per-center once
+function migrateIfNeeded(){
+  const old = JSON.parse(localStorage.getItem('nas_history') || "[]");
+  if (!old || old.length === 0) return;
+  for (const r of old){
+    const k = getHistoryKey(r.facility || "default");
+    const arr = JSON.parse(localStorage.getItem(k) || "[]");
+    arr.push(r);
+    localStorage.setItem(k, JSON.stringify(arr));
+  }
+  localStorage.removeItem('nas_history');
+}
 
 // ====== AUTH / LANDING ======
 function renderLogin(){
@@ -24,7 +44,7 @@ function renderLogin(){
   root.innerHTML = `
     <section class="card auth-wrapper">
       <h1 class="auth-title">Inicio</h1>
-      <p class="muted">Seleccione su centro en Santiago y escriba las <strong>iniciales</strong> como clave.</p>
+      <p class="muted">Seleccione su centro (Santiago) y escriba las <strong>iniciales</strong> como clave.</p>
       <div class="row">
         <label>Clínica / Hospital (Santiago)
           <select id="facilitySelect">
@@ -32,7 +52,7 @@ function renderLogin(){
           </select>
         </label>
         <label>Clave (iniciales del centro)
-          <input id="accessKey" type="password" placeholder="Ej.: Clínica Alemana → CA">
+          <input id="accessKey" type="password" placeholder="Ej.: Clínica Santa María → CSM">
         </label>
       </div>
       <div class="helper" id="hint" style="margin-top:6px;"></div>
@@ -73,10 +93,12 @@ function renderLogin(){
 }
 
 function renderApp(){
+  migrateIfNeeded();
+
   const root = document.getElementById('appRoot');
   root.innerHTML = `
     <h1>Aplicación de la Escala NAS</h1>
-    <p class="muted">Unidad (UCI/UTI), exclusión automática y franjas zebra. Orden 1a→23.</p>
+    <p class="muted">Historial aislado por centro. Orden 1a→23. Ítems excluyentes en gris.</p>
 
     <form id="nasForm">
       <section class="card">
@@ -131,7 +153,7 @@ function renderApp(){
     </form>
 
     <section class="card">
-      <h2>Historial local (este navegador)</h2>
+      <h2>Historial local (este centro)</h2>
       <div id="history"></div>
       <button id="exportCsv">Exportar CSV</button>
     </section>
@@ -151,47 +173,9 @@ function renderApp(){
   loadHistory();
 
   document.getElementById("exportCsv").addEventListener("click", exportCSV);
-  document.getElementById("dupLast").addEventListener("click", () => {
-    const rows = JSON.parse(localStorage.getItem('nas_history') || "[]");
-    if(rows.length === 0){ alert("No hay registros previos que duplicar."); return; }
-    const r = rows[0];
-    const f = document.getElementById('nasForm');
-    f.identifier.value = r.identifier || "";
-    f.shift.value = r.shift || "Día";
-    f.note.value = r.note || "";
-    f.patient_status.value = r.patient_status || "N/A";
-    f.unit.value = r.unit || "UCI";
-    if (r.created_at) f.created_at.value = r.created_at.replace(" ", "T");
-    const prev = r.codes || [];
-    document.querySelectorAll('input[type=checkbox][data-nas]').forEach(cb=>{
-      cb.checked = prev.includes(cb.value);
-    });
-    refreshSummary();
-  });
+  document.getElementById("dupLast").addEventListener("click", restoreLast);
   document.getElementById("printBtn").addEventListener("click", () => window.print());
-  document.getElementById("nasForm").addEventListener("submit", (e) => {
-    e.preventDefault();
-    const f = e.target;
-    const codes = getSelectedCodes();
-    const auth = JSON.parse(localStorage.getItem('nas_auth') || "{}");
-    const row = {
-      facility: auth.facility || "",
-      created_at: (f.created_at.value || new Date().toISOString().slice(0,16)).replace("T"," "),
-      identifier: f.identifier.value,
-      shift: f.shift.value,
-      patient_status: f.patient_status.value || "N/A",
-      unit: f.unit.value || "UCI",
-      note: f.note.value,
-      codes,
-      total_score: codes.reduce((acc, c) => acc + (window.NAS_CATALOG[c]?.weight || 0), 0),
-    };
-    appendHistory(row);
-    f.reset();
-    renderCatalog();
-    setDefaultDateTime();
-    refreshSummary();
-    alert("Evaluación guardada (historial local).");
-  });
+  document.getElementById("nasForm").addEventListener("submit", onSubmit);
 }
 
 document.getElementById('logoutBtn').addEventListener('click', () => {
@@ -234,17 +218,22 @@ function refreshSummary(){
   const el = document.getElementById('totalScore');
   if (el) el.textContent = numberToComma(total);
 }
+
+// ====== History storage (per-center) ======
+function currentHistoryKey(){
+  const auth = JSON.parse(localStorage.getItem('nas_auth') || "{}");
+  return getHistoryKey(auth.facility || "default");
+}
 function loadHistory(){
   const el = document.getElementById('history');
-  const rows = JSON.parse(localStorage.getItem('nas_history') || "[]");
+  const rows = JSON.parse(localStorage.getItem(currentHistoryKey()) || "[]");
   if (rows.length === 0){
-    el.innerHTML = "<p class='muted'>Aún no hay registros locales.</p>";
+    el.innerHTML = "<p class='muted'>Aún no hay registros locales para este centro.</p>";
     return;
   }
-  const table = [`<table><thead><tr><th>Centro</th><th>Fecha</th><th>Identificador</th><th>Turno</th><th>Paciente</th><th>Unidad</th><th>Puntaje</th><th>Ítems</th><th>Nota</th></tr></thead><tbody>`];
+  const table = [`<table><thead><tr><th>Fecha</th><th>Identificador</th><th>Turno</th><th>Paciente</th><th>Unidad</th><th>Puntaje</th><th>Ítems</th><th>Nota</th></tr></thead><tbody>`];
   for (const r of rows){
     table.push(`<tr>
-      <td>${r.facility||"—"}</td>
       <td>${r.created_at}</td>
       <td>${r.identifier||"—"}</td>
       <td>${r.shift||"—"}</td>
@@ -259,17 +248,36 @@ function loadHistory(){
   el.innerHTML = table.join("");
 }
 function appendHistory(row){
-  const rows = JSON.parse(localStorage.getItem('nas_history') || "[]");
+  const key = currentHistoryKey();
+  const rows = JSON.parse(localStorage.getItem(key) || "[]");
   rows.unshift(row);
-  localStorage.setItem('nas_history', JSON.stringify(rows));
+  localStorage.setItem(key, JSON.stringify(rows));
   loadHistory();
 }
+function restoreLast(){
+  const key = currentHistoryKey();
+  const rows = JSON.parse(localStorage.getItem(key) || "[]");
+  if(rows.length === 0){ alert("No hay registros previos en este centro."); return; }
+  const r = rows[0];
+  const f = document.getElementById('nasForm');
+  f.identifier.value = r.identifier || "";
+  f.shift.value = r.shift || "Día";
+  f.note.value = r.note || "";
+  f.patient_status.value = r.patient_status || "N/A";
+  f.unit.value = r.unit || "UCI";
+  if (r.created_at) f.created_at.value = r.created_at.replace(" ", "T");
+  const prev = r.codes || [];
+  document.querySelectorAll('input[type=checkbox][data-nas]').forEach(cb=>{
+    cb.checked = prev.includes(cb.value);
+  });
+  refreshSummary();
+}
 function exportCSV(){
-  const rows = JSON.parse(localStorage.getItem('nas_history') || "[]");
-  if (rows.length === 0) return alert("No hay datos para exportar.");
-  const headers = ["facility","created_at","identifier","shift","patient_status","unit","total_score","codes","note"];
+  const key = currentHistoryKey();
+  const rows = JSON.parse(localStorage.getItem(key) || "[]");
+  if (rows.length === 0) return alert("No hay datos para exportar en este centro.");
+  const headers = ["created_at","identifier","shift","patient_status","unit","total_score","codes","note"];
   const csv = [headers.join(",")].concat(rows.map(r => [
-    `"${(r.facility||"").replace(/"/g,'""')}"`,
     r.created_at,
     `"${(r.identifier||"").replace(/"/g,'""')}"`,
     `"${(r.shift||"").replace(/"/g,'""')}"`,
@@ -283,10 +291,35 @@ function exportCSV(){
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `nas_export_${new Date().toISOString().slice(0,10)}.csv`;
+  a.download = `nas_export_${new Date().toISOString().slice(0,10)}_${slugify(JSON.parse(localStorage.getItem('nas_auth')||"{}").facility||"centro")}.csv`;
   a.click();
   URL.revokeObjectURL(url);
 }
+
+// ====== Submit ======
+function onSubmit(e){
+  e.preventDefault();
+  const f = e.target;
+  const codes = getSelectedCodes();
+  const row = {
+    created_at: (f.created_at.value || new Date().toISOString().slice(0,16)).replace("T"," "),
+    identifier: f.identifier.value,
+    shift: f.shift.value,
+    patient_status: f.patient_status.value || "N/A",
+    unit: f.unit.value || "UCI",
+    note: f.note.value,
+    codes,
+    total_score: codes.reduce((acc, c) => acc + (window.NAS_CATALOG[c]?.weight || 0), 0),
+  };
+  appendHistory(row);
+  f.reset();
+  renderCatalog(); // limpia selección
+  setDefaultDateTime();
+  refreshSummary();
+  alert("Evaluación guardada (historial local de este centro).");
+}
+
+// ====== Init ======
 function setDefaultDateTime(){
   const f = document.getElementById('nasForm');
   if (f && !f.created_at.value){
@@ -296,6 +329,7 @@ function setDefaultDateTime(){
     f.created_at.value = local;
   }
 }
+
 document.addEventListener("change", e => {
   if (e.target.matches('input[type=checkbox][data-nas]')){
     exclusiveAuto(e);
@@ -306,6 +340,10 @@ document.addEventListener("DOMContentLoaded", () => {
   const auth = JSON.parse(localStorage.getItem('nas_auth') || "{}");
   if (auth && auth.facility){
     renderApp();
+    const badge = document.getElementById('facilityBadge');
+    badge.textContent = auth.facility;
+    badge.style.display = "inline-block";
+    document.getElementById('logoutBtn').style.display = "inline-block";
   } else {
     renderLogin();
   }
