@@ -5,6 +5,3 @@
 - **Historial aislado por centro** (localStorage con namespace). Exportar CSV y Duplicar última por centro.
 - Formulario NAS con orden 1a→23, ítems excluyentes en gris (autoexclusión), franjas zebra, impresión.
 
-**Publicación:**
-- Sube `index.html` y la carpeta `assets/` a GitHub Pages / Netlify / Vercel.
-- Si no ves cambios, fuerza caché con `?v=7.2` al final de la URL.
