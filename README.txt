@@ -1,0 +1,1 @@
+Falta volver a generar los archivos base de v6.7. Avísame y los recompilo.
