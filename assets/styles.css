@@ -1,0 +1,42 @@
+*{box-sizing:border-box;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,sans-serif}
+body{margin:0;background:#f7f8fb;color:#111;display:flex;flex-direction:column;min-height:100vh}
+.topbar{display:flex;justify-content:space-between;align-items:center;background:#111;color:#fff;padding:10px 14px}
+.topbar .link{background:transparent;border:0;color:#fff;text-decoration:underline;cursor:pointer}
+.badge-top{margin-left:10px;background:#2b8a3e;color:#fff;border-radius:999px;padding:2px 10px;font-size:12px}
+.container{max-width:1000px;margin:24px auto;padding:0 16px;flex:1}
+h1{font-size:24px;margin:16px 0}
+h2{font-size:18px;margin:8px 0 12px}
+.muted{color:#666}
+.card{background:#fff;border:1px solid #e6e8ef;border-radius:12px;padding:14px 16px;margin:12px 0;box-shadow:0 6px 18px rgba(0,0,0,.05)}
+.row{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;align-items:center}
+label{display:block;margin:6px 0}
+input[type=text],textarea,select,input[type=datetime-local],input[type=password]{width:100%;padding:10px;border:1px solid #dcdfea;border-radius:8px;background:#fff}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:10px}
+.item{border:1px solid #e6ecff;border-radius:10px;padding:10px;background:#f8faff;transition:background .12s,border-color .12s;position:relative}
+.item strong{display:inline-block;width:45px}
+.item em{color:#667}
+.badge{position:absolute;top:8px;right:10px;font-size:11px;padding:2px 6px;border-radius:6px;background:#e5e5e5;color:#333}
+.warn{background:#fff4e5;border:1px solid #ffd8a8;color:#8a5a00;border-radius:10px;padding:10px;margin-top:10px}
+button{border:0;border-radius:10px;background:#111;color:#fff;padding:10px 14px;cursor:pointer}
+button.secondary{background:#444}
+button:disabled{opacity:.6}
+table{width:100%;border-collapse:collapse}
+th,td{padding:8px;border-bottom:1px solid #eee;text-align:left}
+/* Zebra */
+.zebra .item{background:#f8faff;border-color:#e6ecff}
+.zebra .item:nth-of-type(2n){background:#f2f6ff;border-color:#dbe6ff}
+/* Exclusive -> gray override */
+.item.exclusive{background:#efefef !important;border-color:#d9d9d9 !important}
+.item.exclusive .badge{background:#d9d9d9;color:#222}
+.item:hover{border-color:#bcd0ff;background:#eef4ff}
+.footer{background:#222;color:#eee;text-align:center;padding:12px;font-size:14px}
+/* Login / Inicio */
+.auth-wrapper{max-width:560px;margin:40px auto}
+.auth-title{font-size:20px;margin-bottom:10px}
+.helper{font-size:12.5px;color:#666}
+@media print {
+  body{background:#fff}
+  .card{box-shadow:none;border:0}
+  #exportCsv,#dupLast,#printBtn{display:none}
+  .footer,.topbar{display:none}
+}
